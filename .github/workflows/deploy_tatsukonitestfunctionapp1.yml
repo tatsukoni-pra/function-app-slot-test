@@ -56,18 +56,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: "Disable Staging Slot Functions except HttpTrigger"
-        uses: ./.github/actions/disable_staging_functions
-        with:
-          service_principal: ${{ secrets.AZURE_CREDENTIALS_FUNCTIONAPP }}
-          subscription_id: ${{ env.SUBSCRIPTION_ID }}
-          function_app_name: ${{ env.FUNCTION_NAME }}
-          resource_group_name: ${{ env.RESOURCE_GROUP_NAME }}
-
       - name: Login via Azure CLI
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS_FUNCTIONAPP }}
+
+      - name: "Disable Staging Slot Functions except HttpTrigger"
+        uses: ./.github/actions/disable_staging_functions
+        with:
+          # service_principal: ${{ secrets.AZURE_CREDENTIALS_FUNCTIONAPP }}
+          subscription_id: ${{ env.SUBSCRIPTION_ID }}
+          function_app_name: ${{ env.FUNCTION_NAME }}
+          resource_group_name: ${{ env.RESOURCE_GROUP_NAME }}
+          skip_azure_login: true
 
       - name: Swap Azure Function To Production
         id: slot_swap

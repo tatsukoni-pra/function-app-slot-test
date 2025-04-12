@@ -2,9 +2,6 @@ name: Disable Staging Functions
 description: "Disable Staging Slot Functions except HttpTrigger"
 
 inputs:
-  service_principal:
-    description: "Service Principal Value"
-    required: true
   subscription_id:
     description: "Subscription ID"
     required: true
@@ -14,11 +11,19 @@ inputs:
   resource_group_name:
     description: "Resource Group Name"
     required: true
+  skip_azure_login:
+    description: "Skip Azure Login"
+    required: false
+    default: "true"
+  service_principal:
+    description: "Service Principal Value. If skip_azure_login is false, this input is required."
+    required: false
 
 runs:
   using: "composite"
   steps:
     - name: Login via Azure CLI
+      if: ${{ inputs.skip_azure_login != 'true' }}
       uses: azure/login@v2
       with:
         creds: ${{ inputs.service_principal }}
@@ -50,10 +55,11 @@ runs:
               --slot staging \
               --slot-settings $SLOT_SETTINGS
           else
-            echo "No functions to disable."
+            echo -e "\e[32m No functions to disable. \e[0m"
           fi
 
     - name: Logout via Azure CLI
+      if: ${{ inputs.skip_azure_login != 'true' }}
       uses: Azure/cli@v2
       with:
         azcliversion: 2.71.0
