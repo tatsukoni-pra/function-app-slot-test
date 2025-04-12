@@ -51,6 +51,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: "Disable Staging Slot Functions except HttpTrigger"
         uses: ./.github/actions/disable_staging_functions
         with:
