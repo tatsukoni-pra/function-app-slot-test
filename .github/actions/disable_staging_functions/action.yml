@@ -1,0 +1,61 @@
+name: Disable Staging Functions
+description: "Disable Staging Slot Functions except HttpTrigger"
+
+inputs:
+  service_principal:
+    description: "Service Principal Value"
+    required: true
+  subscription_id:
+    description: "Subscription ID"
+    required: true
+  function_app_name:
+    description: "Azure Function App Name"
+    required: true
+  resource_group_name:
+    description: "Resource Group Name"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Login via Azure CLI
+      uses: azure/login@v2
+      with:
+        creds: ${{ inputs.service_principal }}
+
+    - name: Disable Functions
+      uses: Azure/cli@v2
+      env:
+        SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
+        FUNCTION_APP_NAME: ${{ inputs.function_app_name }}
+        RESOURCE_GROUP_NAME: ${{ inputs.resource_group_name }}
+      with:
+        azcliversion: 2.71.0
+        inlineScript: |
+          STAGIND_FUNCTIONS=$(az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups//$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/Staging/functions?api-version=2018-11-01" | \
+            jq -r '.value[] | select(all(.properties.config.bindings[].type; . != "httpTrigger")) | .properties.name')
+          echo "staging functions: $STAGIND_FUNCTIONS"
+
+          if [ -n "$STAGIND_FUNCTIONS" ]; then
+            SLOT_SETTINGS=$(echo "$STAGIND_FUNCTIONS" | while read -r func; do
+              echo "AzureWebJobs.${func}.Disabled=true "
+            done)
+            SLOT_SETTINGS=$(echo $SLOT_SETTINGS | sed -e 's/[[:space:]]*$//')
+
+            echo "target settings: $SLOT_SETTINGS"
+
+            az functionapp config appsettings set \
+              --resource-group $RESOURCE_GROUP_NAME \
+              --name $FUNCTION_APP_NAME \
+              --slot Staging \
+              --slot-settings $SLOT_SETTINGS
+          else
+            echo "No functions to disable."
+          fi
+
+    - name: Logout via Azure CLI
+      uses: Azure/cli@v2
+      with:
+        azcliversion: 2.71.0
+        inlineScript: |
+          az logout
