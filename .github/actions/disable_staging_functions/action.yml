@@ -32,7 +32,7 @@ runs:
       with:
         azcliversion: 2.71.0
         inlineScript: |
-          STAGIND_FUNCTIONS=$(az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups//$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/Staging/functions?api-version=2018-11-01" | \
+          STAGIND_FUNCTIONS=$(az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups//$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/staging/functions?api-version=2018-11-01" | \
             jq -r '.value[] | select(all(.properties.config.bindings[].type; . != "httpTrigger")) | .properties.name')
           echo "staging functions: $STAGIND_FUNCTIONS"
 
@@ -47,7 +47,7 @@ runs:
             az functionapp config appsettings set \
               --resource-group $RESOURCE_GROUP_NAME \
               --name $FUNCTION_APP_NAME \
-              --slot Staging \
+              --slot staging \
               --slot-settings $SLOT_SETTINGS
           else
             echo "No functions to disable."
