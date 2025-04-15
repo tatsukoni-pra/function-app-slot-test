@@ -18,6 +18,8 @@ jobs:
   build-and-deploy-staging:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      LAST_MODIFIED_TIME_BEFORE_DEPLOY: ${{ steps.lastModifiedTimeUtc.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +38,24 @@ jobs:
           npm run build --if-present
           popd
 
+      - name: Login via Azure CLI
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_FUNCTIONAPP }}
+
+      - name: Get lastModifiedTimeUtc Before Deploy
+        id: lastModifiedTimeUtc
+        uses: Azure/cli@v2
+        with:
+          azcliversion: 2.71.0
+          inlineScript: |
+            lastModifiedTimeUtc=$(az functionapp deployment slot list --name ${{ env.FUNCTION_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+              --query "[].lastModifiedTimeUtc" -o tsv)
+            echo "LAST_MODIFIED_TIME_BEFORE_DEPLOY=$lastModifiedTimeUtc" >> $GITHUB_OUTPUT
+
+      - name: Logout via Azure CLI
+        run: az logout
+
       - name: Deploy Azure Function
         uses: Azure/functions-action@v1
         id: fa
@@ -46,38 +66,59 @@ jobs:
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_STAGING }}
           respect-funcignore: true
 
-  # swap-production:
-  #   needs: build-and-deploy-staging
-  #   runs-on: ubuntu-24.04
-  #   timeout-minutes: 20
-  #   steps:
-  #     - name: Checkout repository
-  #       uses: actions/checkout@v4
-  #       with:
-  #         fetch-depth: 0
+  swap-production:
+    needs: build-and-deploy-staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-  #     - name: Login via Azure CLI
-  #       uses: azure/login@v1
-  #       with:
-  #         creds: ${{ secrets.AZURE_CREDENTIALS_FUNCTIONAPP }}
+      - name: Login via Azure CLI
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS_FUNCTIONAPP }}
 
-  #     # TODO: Staging Slot に関数がロードされるまで待機しないといけない？
+      - name: Wait for Reflected Latest Deployment
+        uses: Azure/cli@v2
+        with:
+          azcliversion: 2.71.0
+          inlineScript: |
+            for i in {1..40}; do
+              lastModifiedTimeUtc=$(az functionapp deployment slot list --name ${{ env.FUNCTION_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+                --query "[].lastModifiedTimeUtc" -o tsv)
 
-  #     - name: "Disable Staging Slot Functions except HttpTrigger"
-  #       uses: ./.github/actions/disable_staging_functions
-  #       with:
-  #         subscription_id: ${{ env.SUBSCRIPTION_ID }}
-  #         function_app_name: ${{ env.FUNCTION_NAME }}
-  #         resource_group_name: ${{ env.RESOURCE_GROUP_NAME }}
-  #         skip_azure_login: true
+              echo "lastModifiedTimeUtc Before Deploy: ${{ needs.build-and-deploy-staging.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}"
+              echo "lastModifiedTimeUtc After Deploy: $lastModifiedTimeUtc"
 
-  #     - name: Swap Azure Function To Production
-  #       id: slot_swap
-  #       run: |
-  #         az webapp deployment slot swap \
-  #           --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
-  #           --name ${{ env.FUNCTION_NAME }} \
-  #           --slot ${{ env.SLOT_NAME }}
+              if [ "$lastModifiedTimeUtc" != "${{ needs.build-and-deploy-staging.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}" ]; then
+                echo "デプロイが反映されたので、Staging SlotのHTTP Trigger以外のFunctionを無効化します"
+                break
+              elif [ "$i" -eq 10 ]; then
+                echo "10分待機しましたが、デプロイの反映を確認できませんでした" >&2
+                exit 1
+              else
+                sleep 15
+              fi
+            done
 
-  #     - name: Logout via Azure CLI
-  #       run: az logout
+      - name: "Disable Staging Slot Functions except HttpTrigger"
+        uses: ./.github/actions/disable_staging_functions
+        with:
+          subscription_id: ${{ env.SUBSCRIPTION_ID }}
+          function_app_name: ${{ env.FUNCTION_NAME }}
+          resource_group_name: ${{ env.RESOURCE_GROUP_NAME }}
+          skip_azure_login: true
+
+      - name: Swap Azure Function To Production
+        id: slot_swap
+        run: |
+          az webapp deployment slot swap \
+            --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            --name ${{ env.FUNCTION_NAME }} \
+            --slot ${{ env.SLOT_NAME }}
+
+      - name: Logout via Azure CLI
+        run: az logout
