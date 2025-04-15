@@ -93,7 +93,7 @@ jobs:
               echo "lastModifiedTimeUtc Before Deploy: ${{ needs.build-and-deploy-staging.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}"
               echo "lastModifiedTimeUtc After Deploy: $lastModifiedTimeUtc"
 
-              if [ "$lastModifiedTimeUtc" != "${{ needs.build-and-deploy-staging.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}" ]; then
+              if [ "$lastModifiedTimeUtc" = "${{ needs.build-and-deploy-staging.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}" ]; then
                 echo "デプロイが反映されたので、Staging SlotのHTTP Trigger以外のFunctionを無効化します"
                 break
               elif [ "$i" -eq 10 ]; then
