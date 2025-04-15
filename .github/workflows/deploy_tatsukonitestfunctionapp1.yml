@@ -49,7 +49,7 @@ jobs:
         with:
           azcliversion: 2.71.0
           inlineScript: |
-            lastModifiedTimeUtc=$(az functionapp deployment slot list --name ${{ env.FUNCTION_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+            lastModifiedTimeUtc=$(az webapp deployment slot list --name ${{ env.FUNCTION_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
               --query "[].lastModifiedTimeUtc" -o tsv)
             echo "LAST_MODIFIED_TIME_BEFORE_DEPLOY=$lastModifiedTimeUtc" >> $GITHUB_OUTPUT
 
@@ -87,7 +87,7 @@ jobs:
           azcliversion: 2.71.0
           inlineScript: |
             for i in {1..40}; do
-              lastModifiedTimeUtc=$(az functionapp deployment slot list --name ${{ env.FUNCTION_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
+              lastModifiedTimeUtc=$(az webapp deployment slot list --name ${{ env.FUNCTION_NAME }} --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
                 --query "[].lastModifiedTimeUtc" -o tsv)
 
               echo "lastModifiedTimeUtc Before Deploy: ${{ needs.build-and-deploy-staging.outputs.LAST_MODIFIED_TIME_BEFORE_DEPLOY }}"
