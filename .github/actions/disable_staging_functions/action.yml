@@ -34,25 +34,42 @@ runs:
         SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
         FUNCTION_APP_NAME: ${{ inputs.function_app_name }}
         RESOURCE_GROUP_NAME: ${{ inputs.resource_group_name }}
+        SLOT_NAME: staging
       with:
         azcliversion: 2.71.0
         inlineScript: |
-          STAGIND_FUNCTIONS=$(az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/staging/functions?api-version=2018-11-01" | \
+          # HTTPトリガー以外の関数名を取得
+          STAGIND_FUNCTIONS=$(az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/$SLOT_NAME/functions?api-version=2018-11-01" | \
             jq -r '.value[] | select(all(.properties.config.bindings[].type; . != "httpTrigger")) | .properties.name')
-          echo -e "\e[32m target functions: \n$STAGIND_FUNCTIONS \e[0m"
+          echo -e "\e[32m $SLOT_NAME functions: \n$STAGIND_FUNCTIONS \e[0m"
 
-          if [ -n "$STAGIND_FUNCTIONS" ]; then
-            SLOT_SETTINGS=$(echo "$STAGIND_FUNCTIONS" | while read -r func; do
+          # 既に無効化されている関数を取得
+          DISABLED_FUNCTIONS=$(az functionapp config appsettings list --name $FUNCTION_APP_NAME --resource-group $RESOURCE_GROUP_NAME --slot $SLOT_NAME | jq -r '.[] |
+            select(.name | startswith("AzureWebJobs.") and endswith(".Disabled")) |
+            select(.slotSetting == true and .value == "true") |
+            .name |
+            sub("AzureWebJobs."; "") |
+            sub(".Disabled"; "")')
+          echo -e "\e[32m disabled functions: \n$DISABLED_FUNCTIONS \e[0m"
+
+          # 既に無効化されている関数は、対象から除外
+          TARGET_FUNCTIONS=$(echo "$STAGIND_FUNCTIONS\n$DISABLED_FUNCTIONS" | sort | uniq -u)
+          echo -e "\e[32m target functions: \n$TARGET_FUNCTIONS \e[0m"
+
+          if [ -n "$TARGET_FUNCTIONS" ]; then
+            # 無効化対象の関数ごとに、AzureWebJobs.${func}.Disabled=true という環境変数を設定
+            SLOT_SETTINGS=$(echo "$TARGET_FUNCTIONS" | while read -r func; do
               echo "AzureWebJobs.${func}.Disabled=true "
             done)
             SLOT_SETTINGS=$(echo $SLOT_SETTINGS | sed -e 's/[[:space:]]*$//')
 
             echo -e "\e[32m target settings: \n$SLOT_SETTINGS \e[0m"
 
+            # AzureWebJobs.${func}.Disabled=true をStagingSlotに反映し、対象の関数を無効化する
             az functionapp config appsettings set \
               --resource-group $RESOURCE_GROUP_NAME \
               --name $FUNCTION_APP_NAME \
-              --slot staging \
+              --slot $SLOT_NAME \
               --slot-settings $SLOT_SETTINGS
           else
             echo -e "\e[32m No functions to disable. \e[0m"
