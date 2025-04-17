@@ -59,7 +59,7 @@ runs:
             select(.slotSetting == true and .value == "true") |
             .name |
             sub("AzureWebJobs."; "") |
-            sub(".Disabled"; "")') | \
+            sub(".Disabled"; "")' | \
             sort | uniq > disabled_functions.txt
           echo -e "\e[32m Disabled FunctionName: \n$(cat disabled_functions.txt) \e[0m"
 
