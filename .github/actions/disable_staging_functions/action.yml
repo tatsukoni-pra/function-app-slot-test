@@ -77,13 +77,12 @@ runs:
         FUNCTION_APP_NAME: ${{ inputs.function_app_name }}
         RESOURCE_GROUP_NAME: ${{ inputs.resource_group_name }}
         SLOT_NAME: staging
-        TARGET_FUNCTIONS: ${{ env.TARGET_FUNCTIONS }}
       with:
         azcliversion: 2.71.0
         inlineScript: |
-          if [ -n "$TARGET_FUNCTIONS" ]; then
+          if [ -n "${{ env.TARGET_FUNCTIONS }}" ]; then
             # 無効化対象の関数ごとに、AzureWebJobs.${func}.Disabled=true という環境変数を設定
-            SLOT_SETTINGS=$(echo "$TARGET_FUNCTIONS" | while read -r func; do
+            SLOT_SETTINGS=$(echo "${{ env.TARGET_FUNCTIONS }}" | while read -r func; do
               echo "AzureWebJobs.${func}.Disabled=true "
             done)
             SLOT_SETTINGS=$(echo $SLOT_SETTINGS | sed -e 's/[[:space:]]*$//')
