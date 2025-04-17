@@ -63,14 +63,7 @@ runs:
             sort | uniq > disabled_functions.txt
           echo -e "\e[32m Disabled FunctionName: \n$(cat disabled_functions.txt) \e[0m"
 
-    # 無効化対象の関数名を取得
-    - name: Get Target FunctionName
-      run: |
-        TARGET_FUNCTIONS=$(comm -2 -3 staging_functions.txt disabled_functions.txt) >> $GITHUB_ENV
-        echo -e "\e[32m target functions: \n$TARGET_FUNCTIONS \e[0m"
-      shell: bash
-
-    # 対象の関数を無効化する
+    # 無効化対象の関数名が存在する場合、AzureWebJobs.{関数名}.Disabled=true を設定し、無効化を行う
     - name: Execute Disable Functions
       uses: Azure/cli@v2
       env:
@@ -80,9 +73,13 @@ runs:
       with:
         azcliversion: 2.71.0
         inlineScript: |
-          if [ -n "${{ env.TARGET_FUNCTIONS }}" ]; then
+          # 既に無効化されている関数名を除外し、無効化対象の関数名を取得
+          TARGET_FUNCTIONS=$(comm -2 -3 staging_functions.txt disabled_functions.txt)
+          echo -e "\e[32m target functions: \n$TARGET_FUNCTIONS \e[0m"
+
+          if [ -n "$TARGET_FUNCTIONS" ]; then
             # 無効化対象の関数ごとに、AzureWebJobs.${func}.Disabled=true という環境変数を設定
-            SLOT_SETTINGS=$(echo "${{ env.TARGET_FUNCTIONS }}" | while read -r func; do
+            SLOT_SETTINGS=$(echo "$TARGET_FUNCTIONS" | while read -r func; do
               echo "AzureWebJobs.${func}.Disabled=true "
             done)
             SLOT_SETTINGS=$(echo $SLOT_SETTINGS | sed -e 's/[[:space:]]*$//')
