@@ -28,7 +28,8 @@ runs:
       with:
         creds: ${{ inputs.service_principal }}
 
-    - name: Disable Functions
+    # HTTPトリガー以外の関数名を取得
+    - name: Get FunctionName except HttpTrigger
       uses: Azure/cli@v2
       env:
         SUBSCRIPTION_ID: ${{ inputs.subscription_id }}
@@ -38,24 +39,48 @@ runs:
       with:
         azcliversion: 2.71.0
         inlineScript: |
-          # HTTPトリガー以外の関数名を取得
-          STAGIND_FUNCTIONS=$(az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/$SLOT_NAME/functions?api-version=2018-11-01" | \
-            jq -r '.value[] | select(all(.properties.config.bindings[].type; . != "httpTrigger")) | .properties.name')
-          echo -e "\e[32m $SLOT_NAME functions: \n$STAGIND_FUNCTIONS \e[0m"
+          az rest --method get --uri "https://management.azure.com/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP_NAME/providers/Microsoft.Web/sites/$FUNCTION_APP_NAME/slots/$SLOT_NAME/functions?api-version=2018-11-01" | \
+            jq -r '.value[] | select(all(.properties.config.bindings[].type; . != "httpTrigger")) | .properties.name' | \
+            sort | uniq > staging_functions.txt
+          echo -e "\e[32m FunctionName except HttpTrigger: \n$(cat staging_functions.txt) \e[0m"
 
-          # 既に無効化されている関数を取得
-          DISABLED_FUNCTIONS=$(az functionapp config appsettings list --name $FUNCTION_APP_NAME --resource-group $RESOURCE_GROUP_NAME --slot $SLOT_NAME | jq -r '.[] |
+    # 既に無効化されている(AzureWebJobs.{関数名}.Disabled=true が設定されている)関数名を取得
+    - name: Get Disabled FunctionName
+      uses: Azure/cli@v2
+      env:
+        FUNCTION_APP_NAME: ${{ inputs.function_app_name }}
+        RESOURCE_GROUP_NAME: ${{ inputs.resource_group_name }}
+        SLOT_NAME: staging
+      with:
+        azcliversion: 2.71.0
+        inlineScript: |
+          az functionapp config appsettings list --name $FUNCTION_APP_NAME --resource-group $RESOURCE_GROUP_NAME --slot $SLOT_NAME | jq -r '.[] |
             select(.name | startswith("AzureWebJobs.") and endswith(".Disabled")) |
             select(.slotSetting == true and .value == "true") |
             .name |
             sub("AzureWebJobs."; "") |
-            sub(".Disabled"; "")')
-          echo -e "\e[32m disabled functions: \n$DISABLED_FUNCTIONS \e[0m"
+            sub(".Disabled"; "")') | \
+            sort | uniq > disabled_functions.txt
+          echo -e "\e[32m Disabled FunctionName: \n$(cat disabled_functions.txt) \e[0m"
 
-          # 既に無効化されている関数は、対象から除外
-          TARGET_FUNCTIONS=$(echo "$STAGIND_FUNCTIONS\n$DISABLED_FUNCTIONS" | sort | uniq -u)
-          echo -e "\e[32m target functions: \n$TARGET_FUNCTIONS \e[0m"
+    # 無効化対象の関数名を取得
+    - name: Get Target FunctionName
+      run: |
+        TARGET_FUNCTIONS=$(comm -2 -3 staging_functions.txt disabled_functions.txt) >> $GITHUB_ENV
+        echo -e "\e[32m target functions: \n$TARGET_FUNCTIONS \e[0m"
+      shell: bash
 
+    # 対象の関数を無効化する
+    - name: Execute Disable Functions
+      uses: Azure/cli@v2
+      env:
+        FUNCTION_APP_NAME: ${{ inputs.function_app_name }}
+        RESOURCE_GROUP_NAME: ${{ inputs.resource_group_name }}
+        SLOT_NAME: staging
+        TARGET_FUNCTIONS: ${{ env.TARGET_FUNCTIONS }}
+      with:
+        azcliversion: 2.71.0
+        inlineScript: |
           if [ -n "$TARGET_FUNCTIONS" ]; then
             # 無効化対象の関数ごとに、AzureWebJobs.${func}.Disabled=true という環境変数を設定
             SLOT_SETTINGS=$(echo "$TARGET_FUNCTIONS" | while read -r func; do
