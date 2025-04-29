@@ -1,0 +1,30 @@
+name: Loop Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  loop-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Loop Test
+        run: |
+          for i in {1..80}; do
+            lastModifiedTimeUtc='false'
+            if [ "$lastModifiedTimeUtc" != "false" ]; then
+              echo "デプロイが反映されたので、Staging SlotのHTTP Trigger以外のFunctionを無効化します"
+              break
+            elif [ "$i" -eq 80 ]; then
+              echo "20分待機しましたが、デプロイの反映を確認できませんでした" >&2
+              exit 1
+            else
+              echo "デプロイが未反映のため、待機を継続します"
+              sleep 15
+            fi
+          done
